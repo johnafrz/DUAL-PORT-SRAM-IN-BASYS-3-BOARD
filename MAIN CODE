@@ -1,0 +1,91 @@
+module dual_port_sram (
+    input wire clk,          // 100 MHz system clock
+    input wire rst,          // Reset (btnC)
+    input wire [9:0] sw,     // sw[7:0] = data, sw[9:8] = addr
+    input wire btnL,         // Write Enable A
+    input wire btnR,         // Write Enable B
+
+    output reg [7:0] led,    // Output from Port A
+    output reg [6:0] seg,    // 7-segment segment
+    output reg [3:0] an      // 7-segment anode
+);
+
+    // Clock Divider (1Hz)
+    reg [25:0] clk_div;
+    reg slow_clk;
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            clk_div <= 0;
+            slow_clk <= 0;
+        end else begin
+            if (clk_div == 26'd49999999) begin
+                clk_div <= 0;
+                slow_clk <= ~slow_clk;
+            end else begin
+                clk_div <= clk_div + 1;
+            end
+        end
+    end
+
+    // Button Edge Detection
+    reg btnL_prev = 0, btnR_prev = 0;
+    wire we_a = btnL & ~btnL_prev;
+    wire we_b = btnR & ~btnR_prev;
+
+    always @(posedge slow_clk) begin
+        btnL_prev <= btnL;
+        btnR_prev <= btnR;
+    end
+
+    // SRAM Memory
+    reg [7:0] mem [0:3];
+    reg [7:0] dout_a, dout_b;
+    wire [1:0] addr = sw[9:8];
+    wire [7:0] data_in = sw[7:0];
+
+    always @(posedge slow_clk or posedge rst) begin
+        if (rst) begin
+            dout_a <= 0;
+            dout_b <= 0;
+        end else begin
+            if (we_a)
+                mem[addr] <= data_in;
+            dout_a <= mem[addr];
+
+            if (we_b)
+                mem[addr] <= data_in;
+            dout_b <= mem[addr];
+        end
+    end
+
+    // LED Output
+    always @(posedge slow_clk)
+        led <= dout_a;
+
+    // 7-Segment Display (lower nibble of dout_b)
+    reg [3:0] hex;
+    always @(posedge slow_clk) begin
+        hex <= dout_b[3:0];
+        an <= 4'b1110; // Enable rightmost digit only
+        case (hex)
+            4'h0: seg <= 7'b1000000;
+            4'h1: seg <= 7'b1111001;
+            4'h2: seg <= 7'b0100100;
+            4'h3: seg <= 7'b0110000;
+            4'h4: seg <= 7'b0011001;
+            4'h5: seg <= 7'b0010010;
+            4'h6: seg <= 7'b0000010;
+            4'h7: seg <= 7'b1111000;
+            4'h8: seg <= 7'b0000000;
+            4'h9: seg <= 7'b0010000;
+            4'hA: seg <= 7'b0001000;
+            4'hB: seg <= 7'b0000011;
+            4'hC: seg <= 7'b1000110;
+            4'hD: seg <= 7'b0100001;
+            4'hE: seg <= 7'b0000110;
+            4'hF: seg <= 7'b0001110;
+            default: seg <= 7'b1111111;
+        endcase
+    end
+
+endmodule
